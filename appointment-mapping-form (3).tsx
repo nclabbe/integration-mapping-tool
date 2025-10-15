@@ -1,0 +1,529 @@
+import React, { useState } from 'react';
+import { Save, Upload, Download, Plus } from 'lucide-react';
+import * as XLSX from 'xlsx';
+
+export default function AppointmentMappingForm() {
+  const [practiceName, setPracticeName] = useState('');
+  const [practiceNameSaved, setPracticeNameSaved] = useState(false);
+  const [practiceNameError, setPracticeNameError] = useState(false);
+  const [configSaved, setConfigSaved] = useState(false);
+  const [showAlert, setShowAlert] = useState(false);
+  const [alertMessage, setAlertMessage] = useState('');
+  const [activeTab, setActiveTab] = useState('appointmentTypes');
+  
+  const [availableAppointmentTypes, setAvailableAppointmentTypes] = useState([]);
+  const [availableAppointmentPurposes, setAvailableAppointmentPurposes] = useState([]);
+  const [availableDoctors, setAvailableDoctors] = useState([]);
+  const [availableLocations, setAvailableLocations] = useState([]);
+  
+  const [mappedAppointmentTypes, setMappedAppointmentTypes] = useState([]);
+  const [mappedAppointmentPurposes, setMappedAppointmentPurposes] = useState([]);
+  const [mappedDoctors, setMappedDoctors] = useState([]);
+  const [mappedLocations, setMappedLocations] = useState([]);
+  
+  const [categories, setCategories] = useState([]);
+
+  const [currentMapping, setCurrentMapping] = useState({
+    value: '',
+    categories: {}
+  });
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const data = await file.arrayBuffer();
+    const workbook = XLSX.read(data);
+
+    const newAppointmentTypes = XLSX.utils.sheet_to_json(workbook.Sheets['Appointment Type'])
+      .map(row => row.type).filter(Boolean);
+    const newAppointmentPurposes = XLSX.utils.sheet_to_json(workbook.Sheets['Appointment Purpose'])
+      .map(row => row.purpose).filter(Boolean);
+    const newDoctors = XLSX.utils.sheet_to_json(workbook.Sheets['Doctor'])
+      .map(row => row.doctor).filter(Boolean);
+    const newLocations = XLSX.utils.sheet_to_json(workbook.Sheets['Location'])
+      .map(row => row.location).filter(Boolean);
+    const newCategories = XLSX.utils.sheet_to_json(workbook.Sheets['Categories']);
+
+    setAvailableAppointmentTypes(newAppointmentTypes);
+    setAvailableAppointmentPurposes(newAppointmentPurposes);
+    setAvailableDoctors(newDoctors);
+    setAvailableLocations(newLocations);
+    setCategories(newCategories);
+
+    alert('Data imported successfully!');
+  };
+
+  const exportTemplate = () => {
+    const wb = XLSX.utils.book_new();
+
+    // Create empty sheets with only headers
+    const typeSheet = XLSX.utils.json_to_sheet([{ type: '' }]);
+    const purposeSheet = XLSX.utils.json_to_sheet([{ purpose: '' }]);
+    const doctorSheet = XLSX.utils.json_to_sheet([{ doctor: '' }]);
+    const locationSheet = XLSX.utils.json_to_sheet([{ location: '' }]);
+    const categorySheet = XLSX.utils.json_to_sheet([{ Category: '', Values: '' }]);
+
+    XLSX.utils.book_append_sheet(wb, typeSheet, 'Appointment Type');
+    XLSX.utils.book_append_sheet(wb, purposeSheet, 'Appointment Purpose');
+    XLSX.utils.book_append_sheet(wb, doctorSheet, 'Doctor');
+    XLSX.utils.book_append_sheet(wb, locationSheet, 'Location');
+    XLSX.utils.book_append_sheet(wb, categorySheet, 'Categories');
+
+    const fileName = 'appointment_import_template.xlsx';
+    XLSX.writeFile(wb, fileName);
+    alert('Empty template exported! Fill in the data and import it back to start mapping.');
+  };
+
+  const exportMappingConfiguration = () => {
+    if (!practiceName) {
+      alert('Please enter a practice name before exporting');
+      return;
+    }
+
+    const wb = XLSX.utils.book_new();
+
+    // Export mapped appointment types with their categories
+    const mappedTypesData = mappedAppointmentTypes.map(item => {
+      const row = { type: item.value };
+      categories.forEach(cat => {
+        row[cat.Category] = item.categories?.[cat.Category] || '';
+      });
+      return row;
+    });
+    const typeSheet = XLSX.utils.json_to_sheet(mappedTypesData);
+    
+    // Export mapped appointment purposes with their categories
+    const mappedPurposesData = mappedAppointmentPurposes.map(item => {
+      const row = { purpose: item.value };
+      categories.forEach(cat => {
+        row[cat.Category] = item.categories?.[cat.Category] || '';
+      });
+      return row;
+    });
+    const purposeSheet = XLSX.utils.json_to_sheet(mappedPurposesData);
+    
+    // Export mapped doctors with their categories
+    const mappedDoctorsData = mappedDoctors.map(item => {
+      const row = { doctor: item.value };
+      categories.forEach(cat => {
+        row[cat.Category] = item.categories?.[cat.Category] || '';
+      });
+      return row;
+    });
+    const doctorSheet = XLSX.utils.json_to_sheet(mappedDoctorsData);
+    
+    // Export mapped locations with their categories
+    const mappedLocationsData = mappedLocations.map(item => {
+      const row = { location: item.value };
+      categories.forEach(cat => {
+        row[cat.Category] = item.categories?.[cat.Category] || '';
+      });
+      return row;
+    });
+    const locationSheet = XLSX.utils.json_to_sheet(mappedLocationsData);
+    
+    // Export categories as-is
+    const categorySheet = XLSX.utils.json_to_sheet(categories);
+
+    XLSX.utils.book_append_sheet(wb, typeSheet, 'Appointment Type');
+    XLSX.utils.book_append_sheet(wb, purposeSheet, 'Appointment Purpose');
+    XLSX.utils.book_append_sheet(wb, doctorSheet, 'Doctor');
+    XLSX.utils.book_append_sheet(wb, locationSheet, 'Location');
+    XLSX.utils.book_append_sheet(wb, categorySheet, 'Categories');
+
+    const fileName = `${practiceName.replace(/[^a-z0-9]/gi, '_')}_mapping_config.xlsx`;
+    XLSX.writeFile(wb, fileName);
+    
+    const totalMappings = mappedAppointmentTypes.length + mappedAppointmentPurposes.length + 
+                          mappedDoctors.length + mappedLocations.length;
+    alert(`Mapping configuration exported successfully!\nFile: ${fileName}\nTotal mappings: ${totalMappings}`);
+  };
+
+  const getCategoryOptions = (categoryName) => {
+    const category = categories.find(c => c.Category === categoryName);
+    return category ? category.Values.split(',').map(v => v.trim()) : [];
+  };
+
+  const addMapping = () => {
+    if (!currentMapping.value) {
+      alert('Please select a value to map');
+      return;
+    }
+
+    const newMapping = { ...currentMapping };
+    
+    switch(activeTab) {
+      case 'appointmentTypes':
+        if (mappedAppointmentTypes.find(m => m.value === newMapping.value)) {
+          alert('This appointment type is already mapped');
+          return;
+        }
+        setMappedAppointmentTypes([...mappedAppointmentTypes, newMapping]);
+        break;
+      case 'appointmentPurposes':
+        if (mappedAppointmentPurposes.find(m => m.value === newMapping.value)) {
+          alert('This appointment purpose is already mapped');
+          return;
+        }
+        setMappedAppointmentPurposes([...mappedAppointmentPurposes, newMapping]);
+        break;
+      case 'doctors':
+        if (mappedDoctors.find(m => m.value === newMapping.value)) {
+          alert('This doctor is already mapped');
+          return;
+        }
+        setMappedDoctors([...mappedDoctors, newMapping]);
+        break;
+      case 'locations':
+        if (mappedLocations.find(m => m.value === newMapping.value)) {
+          alert('This location is already mapped');
+          return;
+        }
+        setMappedLocations([...mappedLocations, newMapping]);
+        break;
+    }
+
+    setCurrentMapping({ value: '', categories: {} });
+  };
+
+  const showAlertPopup = (message) => {
+    setAlertMessage(message);
+    setShowAlert(true);
+  };
+
+  const closeAlert = () => {
+    setShowAlert(false);
+    setAlertMessage('');
+  };
+
+  const saveAllConfiguration = () => {
+    if (!practiceName) {
+      setPracticeNameError(true);
+      setTimeout(() => setPracticeNameError(false), 3000);
+      showAlertPopup('Practice Name is required! Please enter a practice name before saving.');
+      return;
+    }
+
+    const config = {
+      practiceName,
+      mappedAppointmentTypes,
+      mappedAppointmentPurposes,
+      mappedDoctors,
+      mappedLocations,
+      categories
+    };
+    
+    const totalMappings = mappedAppointmentTypes.length + mappedAppointmentPurposes.length + 
+                          mappedDoctors.length + mappedLocations.length;
+    
+    console.log('All Configurations:', config);
+    setConfigSaved(true);
+    setPracticeNameError(false);
+    setTimeout(() => setConfigSaved(false), 5000);
+    showAlertPopup(`✓ Configuration saved successfully!\n\nPractice Name: ${practiceName}\nTotal Mappings: ${totalMappings}\n  - Appointment Types: ${mappedAppointmentTypes.length}\n  - Appointment Purposes: ${mappedAppointmentPurposes.length}\n  - Doctors/Providers: ${mappedDoctors.length}\n  - Locations: ${mappedLocations.length}`);
+  };
+
+  const getCurrentData = () => {
+    switch(activeTab) {
+      case 'appointmentTypes':
+        return { 
+          available: availableAppointmentTypes, 
+          mapped: mappedAppointmentTypes,
+          title: 'Appointment Types',
+          label: 'Appointment Type'
+        };
+      case 'appointmentPurposes':
+        return { 
+          available: availableAppointmentPurposes, 
+          mapped: mappedAppointmentPurposes,
+          title: 'Appointment Purposes',
+          label: 'Appointment Purpose'
+        };
+      case 'doctors':
+        return { 
+          available: availableDoctors, 
+          mapped: mappedDoctors,
+          title: 'Doctors/Providers',
+          label: 'Doctor/Provider'
+        };
+      case 'locations':
+        return { 
+          available: availableLocations, 
+          mapped: mappedLocations,
+          title: 'Locations',
+          label: 'Location'
+        };
+      default:
+        return { available: [], mapped: [], title: '', label: '' };
+    }
+  };
+
+  const currentData = getCurrentData();
+  const unmappedValues = currentData.available.filter(
+    val => !currentData.mapped.find(m => m.value === val)
+  );
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-6">
+      {showAlert && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <div className="whitespace-pre-line text-gray-800 mb-4">
+              {alertMessage}
+            </div>
+            <button
+              onClick={closeAlert}
+              className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+      
+      <div className="max-w-6xl mx-auto">
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <h1 className="text-3xl font-bold text-gray-800 mb-4">
+            Integration Mapping Configuration
+          </h1>
+          
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Practice Name *
+            </label>
+            <input
+              type="text"
+              value={practiceName}
+              onChange={(e) => {
+                setPracticeName(e.target.value);
+                setPracticeNameSaved(false);
+                setPracticeNameError(false);
+              }}
+              onBlur={() => {
+                if (practiceName) {
+                  setPracticeNameSaved(true);
+                  setTimeout(() => setPracticeNameSaved(false), 3000);
+                }
+              }}
+              placeholder="Enter practice name (used in export filename)"
+              className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 ${
+                practiceNameError 
+                  ? 'border-red-500 focus:ring-red-500' 
+                  : 'border-gray-300 focus:ring-blue-500'
+              }`}
+            />
+            {practiceNameSaved && (
+              <div className="mt-2 text-sm text-green-600 flex items-center gap-1">
+                <span>✓</span>
+                <span>Practice name saved: {practiceName}</span>
+              </div>
+            )}
+            {practiceNameError && (
+              <div className="mt-2 text-sm text-red-600 flex items-center gap-1">
+                <span>⚠</span>
+                <span>Practice Name is required!</span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-3 flex-wrap">
+            <label className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors cursor-pointer">
+              <Upload size={20} />
+              Import Integration Mapping
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+            </label>
+            <button
+              onClick={exportTemplate}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+            >
+              <Download size={20} />
+              Export Template
+            </button>
+            <button
+              onClick={exportMappingConfiguration}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors"
+            >
+              <Download size={20} />
+              Export Mapping Configuration
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-md mb-6">
+          <div className="flex border-b overflow-x-auto">
+            <button
+              onClick={() => setActiveTab('appointmentTypes')}
+              className={`px-4 py-3 font-medium transition-colors whitespace-nowrap ${
+                activeTab === 'appointmentTypes'
+                  ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              Appointment Types
+              <span className="ml-2 text-sm">({mappedAppointmentTypes.length}/{availableAppointmentTypes.length})</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('appointmentPurposes')}
+              className={`px-4 py-3 font-medium transition-colors whitespace-nowrap ${
+                activeTab === 'appointmentPurposes'
+                  ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              Appointment Purposes
+              <span className="ml-2 text-sm">({mappedAppointmentPurposes.length}/{availableAppointmentPurposes.length})</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('doctors')}
+              className={`px-4 py-3 font-medium transition-colors whitespace-nowrap ${
+                activeTab === 'doctors'
+                  ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              Doctors/Providers
+              <span className="ml-2 text-sm">({mappedDoctors.length}/{availableDoctors.length})</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('locations')}
+              className={`px-4 py-3 font-medium transition-colors whitespace-nowrap ${
+                activeTab === 'locations'
+                  ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              Locations
+              <span className="ml-2 text-sm">({mappedLocations.length}/{availableLocations.length})</span>
+            </button>
+          </div>
+
+          <div className="p-6">
+            <h2 className="text-xl font-semibold text-gray-700 mb-4">{currentData.title}</h2>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <h3 className="text-lg font-medium text-gray-800 mb-4">Map New {currentData.label}</h3>
+              
+              <div className="grid grid-cols-1 gap-4 mb-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      {currentData.label} *
+                    </label>
+                    <select
+                      value={currentMapping.value}
+                      onChange={(e) => setCurrentMapping({ ...currentMapping, value: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select {currentData.label.toLowerCase()}...</option>
+                      {unmappedValues.map(val => (
+                        <option key={val} value={val}>{val}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {categories.map(category => (
+                    <div key={category.Category}>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        {category.Category}
+                      </label>
+                      <select
+                        value={currentMapping.categories[category.Category] || ''}
+                        onChange={(e) => setCurrentMapping({ 
+                          ...currentMapping, 
+                          categories: { ...currentMapping.categories, [category.Category]: e.target.value }
+                        })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Select {category.Category.toLowerCase()}...</option>
+                        {getCategoryOptions(category.Category).map(option => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+
+                  <div className="flex items-end">
+                    <button
+                      onClick={addMapping}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                    >
+                      <Plus size={20} />
+                      Enter
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <h3 className="text-lg font-medium text-gray-800 mb-3">
+                Mapped {currentData.title} ({currentData.mapped.length})
+              </h3>
+              
+              {currentData.mapped.length === 0 ? (
+                <p className="text-gray-500 italic">No mappings created yet. Use the form above to add mappings.</p>
+              ) : (
+                <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">{currentData.label}</th>
+                        {categories.map(category => (
+                          <th key={category.Category} className="px-4 py-3 text-left text-sm font-medium text-gray-700">
+                            {category.Category}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {currentData.mapped.map((item, index) => (
+                        <tr key={index} className="border-t border-gray-200">
+                          <td className="px-4 py-3 text-sm text-gray-800">{item.value}</td>
+                          {categories.map(category => (
+                            <td key={category.Category} className="px-4 py-3 text-sm text-gray-600">
+                              {item.categories?.[category.Category] || '—'}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={saveAllConfiguration}
+              className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium"
+            >
+              <Save size={20} />
+              Save Configuration
+            </button>
+            
+            {configSaved && (
+              <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <div className="text-green-800 font-medium mb-2">✓ Configuration saved successfully!</div>
+                <div className="text-sm text-green-700">
+                  <div>Practice Name: <strong>{practiceName}</strong></div>
+                  <div className="mt-1">Total Mappings: <strong>{mappedAppointmentTypes.length + mappedAppointmentPurposes.length + mappedDoctors.length + mappedLocations.length}</strong></div>
+                  <div className="ml-4 mt-1">
+                    <div>• Appointment Types: {mappedAppointmentTypes.length}</div>
+                    <div>• Appointment Purposes: {mappedAppointmentPurposes.length}</div>
+                    <div>• Doctors/Providers: {mappedDoctors.length}</div>
+                    <div>• Locations: {mappedLocations.length}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
